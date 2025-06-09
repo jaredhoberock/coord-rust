@@ -4,7 +4,7 @@ use crate::weakly_congruent;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Coord {
-    Scalar(usize),
+    Scalar(i64),
     Tuple(Vec<Coord>),
 }
 
@@ -81,7 +81,7 @@ impl Coord {
     }
 
     #[congruent(other)]
-    pub fn inner_product(&self, other: &Self) -> usize {
+    pub fn inner_product(&self, other: &Self) -> i64 {
         match (self, other) {
             (Coord::Scalar(a), Coord::Scalar(b)) => a * b,
             (Coord::Tuple(xs), Coord::Tuple(ys)) => xs
@@ -152,8 +152,8 @@ impl Coord {
     }
 }
 
-impl From<usize> for Coord {
-    fn from(x: usize) -> Self {
+impl From<i64> for Coord {
+    fn from(x: i64) -> Self {
         Coord::Scalar(x)
     }
 }
