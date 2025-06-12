@@ -106,7 +106,7 @@ impl Coord {
     }
 
     #[weakly_congruent(other)]
-    pub fn coordinate_product(&self, other: &Self) -> Self {
+    pub fn weak_product(&self, other: &Self) -> Self {
         if self.is_congruent_to(other) {
             return Coord::Scalar(self.inner_product(other));
         }
@@ -115,7 +115,7 @@ impl Coord {
             (Coord::Scalar(a), Coord::Tuple(ys)) => {
                 Coord::Tuple(
                     ys.iter()
-                        .map(|y| Coord::Scalar(*a).coordinate_product(y))
+                        .map(|y| Coord::Scalar(*a).weak_product(y))
                         .collect()
                 )
             },
@@ -124,7 +124,7 @@ impl Coord {
 
                 let products: Vec<Coord> = xs.iter()
                     .zip(ys.iter())
-                    .map(|(x, y)| x.coordinate_product(y))
+                    .map(|(x, y)| x.weak_product(y))
                     .collect();
 
                 let first = &products[0];
@@ -472,115 +472,115 @@ mod tests {
     }
 
     #[test]
-    fn coordinate_product_scalar_scalar_returns_scalar() {
+    fn weak_product_scalar_scalar_returns_scalar() {
         let a: Coord = 3.into();
         let b: Coord = 2.into();
         let expected: Coord = 6.into();
-        assert_eq!(expected, a.coordinate_product(&b));
+        assert_eq!(expected, a.weak_product(&b));
     }
     
     #[test]
-    fn coordinate_product_scalar_tuple_returns_scaled_tuple() {
+    fn weak_product_scalar_tuple_returns_scaled_tuple() {
         let a: Coord = 2.into();
         let b: Coord = (1, 2, 3).into();
         let expected: Coord = (2, 4, 6).into();
-        assert_eq!(expected, a.coordinate_product(&b));
+        assert_eq!(expected, a.weak_product(&b));
     }
     
     #[test]
-    fn coordinate_product_congruent_flat_tuples_returns_scalar_sum() {
+    fn weak_product_congruent_flat_tuples_returns_scalar_sum() {
         let a: Coord = (4, 5, 6).into();
         let b: Coord = (1, 2, 3).into();
         let expected: Coord = 32.into();
-        assert_eq!(expected, a.coordinate_product(&b));
+        assert_eq!(expected, a.weak_product(&b));
     }
     
     #[test]
-    fn coordinate_product_congruent_nested_tuples_returns_scalar_sum() {
+    fn weak_product_congruent_nested_tuples_returns_scalar_sum() {
         let a: Coord = (4, (5, 6)).into();
         let b: Coord = (1, (2, 3)).into();
         let expected: Coord = 32.into();
-        assert_eq!(expected, a.coordinate_product(&b));
+        assert_eq!(expected, a.weak_product(&b));
     }
     
     #[test]
-    fn coordinate_product_empty_tuples_returns_zero() {
+    fn weak_product_empty_tuples_returns_zero() {
         let a: Coord = ().into();
         let b: Coord = ().into();
         let expected: Coord = 0.into();
-        assert_eq!(expected, a.coordinate_product(&b));
+        assert_eq!(expected, a.weak_product(&b));
     }
     
     #[test]
-    fn coordinate_product_scalar_deep_tuple_broadcasts_correctly() {
+    fn weak_product_scalar_deep_tuple_broadcasts_correctly() {
         let a: Coord = 4.into();
         let b: Coord = (1, (2, 3)).into();
         let expected: Coord = (4, (8, 12)).into();
-        assert_eq!(expected, a.coordinate_product(&b));
+        assert_eq!(expected, a.weak_product(&b));
     }
     
     #[test]
-    fn coordinate_product_deep_congruent_tuples_returns_scalar_sum() {
+    fn weak_product_deep_congruent_tuples_returns_scalar_sum() {
         let a: Coord = (5, (6, (7, 8))).into();
         let b: Coord = (1, (2, (3, 4))).into();
         let expected: Coord = 70.into();
-        assert_eq!(expected, a.coordinate_product(&b));
+        assert_eq!(expected, a.weak_product(&b));
     }
     
     #[test]
-    fn coordinate_product_partially_congruent_tuples_returns_tuple_of_sums() {
+    fn weak_product_partially_congruent_tuples_returns_tuple_of_sums() {
         let a: Coord = ((1, 2), (3, 4)).into();
         let b: Coord = (((5, 6), (7, 8)), ((9, 10), (11, 12))).into();
         let expected: Coord = (90, 100).into();
-        assert_eq!(expected, a.coordinate_product(&b));
+        assert_eq!(expected, a.weak_product(&b));
     }
     
     #[test]
-    fn coordinate_product_scalar_vs_mixed_nested_tuple() {
+    fn weak_product_scalar_vs_mixed_nested_tuple() {
         let a: Coord = (1, (2, 3)).into();
         let b: Coord = (1, ((2, 2), (3, 3))).into();
         let expected: Coord = (1, (13, 13)).into();
-        assert_eq!(expected, a.coordinate_product(&b));
+        assert_eq!(expected, a.weak_product(&b));
     }
     
     #[test]
-    fn coordinate_product_mixed_structures_partial_reduction() {
+    fn weak_product_mixed_structures_partial_reduction() {
         let a: Coord = (1, (2, 3), (4, 5)).into();
         let b: Coord = (1, ((2, 2), (3, 3)), (4, 5)).into();
         let expected: Coord = (1, (13, 13), 41).into();
-        assert_eq!(expected, a.coordinate_product(&b));
+        assert_eq!(expected, a.weak_product(&b));
     }
     
     #[test]
-    fn coordinate_product_nested_mixed_with_scalars_and_tuples() {
+    fn weak_product_nested_mixed_with_scalars_and_tuples() {
         let a: Coord = (5, (6, 7)).into();
         let b: Coord = (1, (2, (3, 4))).into();
         let expected: Coord = (5, (12, (21, 28))).into();
-        assert_eq!(expected, a.coordinate_product(&b));
+        assert_eq!(expected, a.weak_product(&b));
     }
     
     #[test]
-    fn coordinate_product_tuple_with_empty_tuple_element() {
+    fn weak_product_tuple_with_empty_tuple_element() {
         let a: Coord = ((), 2).into();
         let b: Coord = ((), 3).into();
         let expected: Coord = 6.into();
-        assert_eq!(expected, a.coordinate_product(&b));
+        assert_eq!(expected, a.weak_product(&b));
     }
     
     #[test]
-    fn coordinate_product_deeply_nested_with_empty_tuple_branches() {
+    fn weak_product_deeply_nested_with_empty_tuple_branches() {
         let a: Coord = ((), (6, ((), 8))).into();
         let b: Coord = ((), (2, ((), 4))).into();
         let expected: Coord = 44.into();
-        assert_eq!(expected, a.coordinate_product(&b));
+        assert_eq!(expected, a.weak_product(&b));
     }
     
     #[test]
-    fn coordinate_product_structurally_irregular_nested_tuples() {
+    fn weak_product_structurally_irregular_nested_tuples() {
         let a: Coord = (1, (2, 3), 4, 5).into();
         let b: Coord = (6, (7, (8, 9)), 10, 11).into();
         let expected: Coord = (6, (14, (24, 27)), 40, 55).into();
-        assert_eq!(expected, a.coordinate_product(&b));
+        assert_eq!(expected, a.weak_product(&b));
     }
 
 
