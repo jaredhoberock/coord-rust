@@ -108,14 +108,15 @@ impl Coord {
         }
     }
 
-    #[requires(congruent(other), nonnullary(other))]
-    pub fn is_below(&self, other: &Self) -> bool {
+    #[requires(congruent(other))]
+    pub fn is_strictly_inside(&self, other: &Self) -> bool {
         match (self, other) {
             (Coord::Scalar(a), Coord::Scalar(b)) => a < b,
-            (Coord::Tuple(xs), Coord::Tuple(ys)) => xs
-                .iter()
-                .zip(ys.iter())
-                .all(|(x, y)| x.is_below(y)),
+            (Coord::Tuple(xs), Coord::Tuple(ys)) => {
+                // () is not strictly inside ()
+                if xs.is_empty() { return false; }
+                xs.iter().zip(ys.iter()).all(|(x, y)| x.is_strictly_inside(y))
+            },
             _ => unreachable!("invariant broken: Coords must be congruent")
         }
     }
@@ -554,56 +555,56 @@ mod tests {
 
 
     #[test]
-    fn is_below_scalar() {
-        let a: Coord = 1.into();
-        let b: Coord = 2.into();
-        assert!(a.is_below(&b));
-        assert!(!b.is_below(&a));
-    }
-    
-    #[test]
-    fn is_below_equal_scalar_not_below() {
-        let a: Coord = 5.into();
-        let b: Coord = 5.into();
-        assert!(!a.is_below(&b));
-    }
-    
-    #[test]
-    fn is_below_flat_tuple() {
-        let a: Coord = (1, 2, 3).into();
-        let b: Coord = (2, 3, 4).into();
-        assert!(a.is_below(&b));
-        assert!(!b.is_below(&a));
-    }
-    
-    #[test]
-    fn is_below_nested_tuple() {
-        let a: Coord = ((1, 2), 3).into();
-        let b: Coord = ((2, 3), 4).into();
-        assert!(a.is_below(&b));
-        assert!(!b.is_below(&a));
-    }
-    
-    #[test]
-    fn is_below_fails_if_any_element_not_below() {
-        let a: Coord = (1, 5, 3).into();
-        let b: Coord = (2, 4, 4).into();
-        assert!(!a.is_below(&b));
-    }
-    
-    #[test]
-    #[should_panic(expected = "Precondition failed")]
-    fn is_below_non_congruent_should_panic() {
-        let a: Coord = (1, 2).into();
-        let b: Coord = 3.into();
-        let _ = a.is_below(&b);
-    }
-    
-    #[test]
-    #[should_panic(expected = "Precondition failed")]
-    fn is_below_empty_tuples_should_panic() {
+    fn is_strictly_inside_empty_tuple() {
         let a: Coord = ().into();
         let b: Coord = ().into();
-        let _ = a.is_below(&b);
+        assert!(!a.is_strictly_inside(&b));
+        assert!(!b.is_strictly_inside(&a));
+    }
+
+    #[test]
+    fn is_strictly_inside_scalar() {
+        let a: Coord = 1.into();
+        let b: Coord = 2.into();
+        assert!(a.is_strictly_inside(&b));
+        assert!(!b.is_strictly_inside(&a));
+    }
+    
+    #[test]
+    fn is_strictly_inside_equal_scalars() {
+        let a: Coord = 5.into();
+        let b: Coord = 5.into();
+        assert!(!a.is_strictly_inside(&b));
+    }
+    
+    #[test]
+    fn is_strictly_inside_flat_tuple() {
+        let a: Coord = (1, 2, 3).into();
+        let b: Coord = (2, 3, 4).into();
+        assert!(a.is_strictly_inside(&b));
+        assert!(!b.is_strictly_inside(&a));
+    }
+    
+    #[test]
+    fn is_strictly_inside_nested_tuple() {
+        let a: Coord = ((1, 2), 3).into();
+        let b: Coord = ((2, 3), 4).into();
+        assert!(a.is_strictly_inside(&b));
+        assert!(!b.is_strictly_inside(&a));
+    }
+    
+    #[test]
+    fn is_strictly_inside_fails_if_any_element_not_below() {
+        let a: Coord = (1, 5, 3).into();
+        let b: Coord = (2, 4, 4).into();
+        assert!(!a.is_strictly_inside(&b));
+    }
+    
+    #[test]
+    #[should_panic(expected = "Precondition failed")]
+    fn is_strictly_inside_non_congruent_should_panic() {
+        let a: Coord = (1, 2).into();
+        let b: Coord = 3.into();
+        let _ = a.is_strictly_inside(&b);
     }
 }
