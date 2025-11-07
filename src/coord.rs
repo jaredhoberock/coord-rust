@@ -1,6 +1,5 @@
-use crate::congruent;
-use crate::requires;
-use crate::weakly_congruent;
+use crate::{congruent, requires, weakly_congruent};
+use crate::shape::Shape;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Coord {
@@ -9,47 +8,30 @@ pub enum Coord {
 }
 
 impl Coord {
-    pub fn rank(&self) -> usize {
+    pub fn shape(&self) -> Shape {
         match self {
-            Coord::Scalar(_) => 1,
-            Coord::Tuple(elements) => elements.len(),
+            Coord::Scalar(_) => Shape::Scalar,
+            Coord::Tuple(xs) => Shape::Tuple(xs.iter().map(|c| c.shape()).collect()),
         }
+    }
+
+    fn zero_from_shape(s: &Shape) -> Self {
+        match s {
+            Shape::Scalar => Coord::Scalar(0),
+            Shape::Tuple(xs) => Coord::Tuple(xs.iter().map(Self::zero_from_shape).collect()),
+        }
+    }
+
+    pub fn rank(&self) -> usize {
+        self.shape().rank()
     }
 
     pub fn is_congruent_to(&self, other: &Self) -> bool {
-        match (self, other) {
-            (Coord::Scalar(_), Coord::Scalar(_)) => true,
-            (Coord::Tuple(xs), Coord::Tuple(ys)) => {
-                xs.len() == ys.len()
-                    && xs.iter()
-                        .zip(ys.iter())
-                        .all(|(x, y)| x.is_congruent_to(y))
-            }
-            _ => false,
-        }
+        self.shape().is_congruent_to(&other.shape())
     }
 
     pub fn is_weakly_congruent_to(&self, other: &Self) -> bool {
-        match (self, other) {
-            // terminal case 0: both are scalars
-            (Coord::Scalar(_), Coord::Scalar(_)) => true,
-
-            // terminal case 1: both are empty tuples
-            (Coord::Tuple(_), Coord::Tuple(_)) if self.rank() == 0 && other.rank() == 0 => true,
-
-            // recursive case 0: scalar vs non-empty tuple
-            (Coord::Scalar(_), Coord::Tuple(children)) if other.rank() > 0 => {
-                children.iter().all(|child| self.is_weakly_congruent_to(child))
-            },
-
-            // recursive case 1: tuples with equal non-zero rank
-            (Coord::Tuple(xs), Coord::Tuple(ys)) if self.rank() == other.rank() && self.rank() > 0 => {
-                xs.iter().zip(ys.iter()).all(|(a, b)| a.is_weakly_congruent_to(b))
-            },
-
-            // terminal case 3: all other cases are not weakly congruent
-            _ => false,
-        }
+        self.shape().is_weakly_congruent_to(&other.shape())
     }
 
     #[congruent(other, result)]
@@ -57,10 +39,7 @@ impl Coord {
         match (self, other) {
             (Coord::Scalar(a), Coord::Scalar(b)) => Coord::Scalar(a + b),
             (Coord::Tuple(xs), Coord::Tuple(ys)) => Coord::Tuple(
-                xs.iter()
-                    .zip(ys.iter())
-                    .map(|(x, y)| x.sum(y))
-                    .collect()
+                xs.iter().zip(ys.iter()).map(|(x, y)| x.sum(y)).collect()
             ),
             _ => unreachable!("invariant broken: Coords must be congruent")
         }
@@ -71,10 +50,7 @@ impl Coord {
         match (self, other) {
             (Coord::Scalar(a), Coord::Scalar(b)) => Coord::Scalar(a - b),
             (Coord::Tuple(xs), Coord::Tuple(ys)) => Coord::Tuple(
-                xs.iter()
-                    .zip(ys.iter())
-                    .map(|(x, y)| x.difference(y))
-                    .collect()
+                xs.iter().zip(ys.iter()).map(|(x, y)| x.difference(y)).collect()
             ),
             _ => unreachable!("invariant broken: Coords must be congruent")
         }
@@ -95,14 +71,7 @@ impl Coord {
 
     #[congruent(result)]
     pub fn zero_like(&self) -> Self {
-        match self {
-            Coord::Scalar(_) => Coord::Scalar(0),
-            Coord::Tuple(xs) => Coord::Tuple(xs
-                .iter()
-                .map(|x| x.zero_like())
-                .collect()
-            ),
-        }
+        Self::zero_from_shape(&self.shape())
     }
 
     #[weakly_congruent(other)]
