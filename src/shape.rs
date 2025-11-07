@@ -91,3 +91,21 @@ impl Shape {
         }
     }
 }
+
+impl std::fmt::Display for Shape {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Shape::Scalar => write!(f, "•"), // or just `S` if you want ASCII-only
+            Shape::Tuple(children) => {
+                write!(f, "(")?;
+                for (i, child) in children.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ",")?;
+                    }
+                    write!(f, "{child}")?;
+                }
+                write!(f, ")")
+            }
+        }
+    }
+}
