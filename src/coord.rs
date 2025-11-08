@@ -118,6 +118,17 @@ impl Coord {
             _ => unreachable!("invariant broken: Coords must be congruent")
         }
     }
+
+    #[requires(congruent(other))]
+    pub fn is_inside(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Coord::Scalar(a), Coord::Scalar(b)) => a <= b,
+            (Coord::Tuple(xs), Coord::Tuple(ys)) => {
+                xs.iter().zip(ys.iter()).all(|(x, y)| x.is_inside(y))
+            },
+            _ => unreachable!("invariant broken: Coords must be congruent")
+        }
+    }
 }
 
 impl From<i64> for Coord {
@@ -604,5 +615,91 @@ mod tests {
         let a: Coord = (1, 2).into();
         let b: Coord = 3.into();
         let _ = a.is_strictly_inside(&b);
+    }
+
+    #[test]
+    fn is_inside_empty_tuple() {
+        let a: Coord = ().into();
+        let b: Coord = ().into();
+        assert!(a.is_inside(&b));
+    }
+
+    #[test]
+    fn is_inside_scalar_lt() {
+        let a: Coord = 1.into();
+        let b: Coord = 2.into();
+        assert!(a.is_inside(&b));
+        assert!(!b.is_inside(&a));
+    }
+
+    #[test]
+    fn is_inside_scalar_eq() {
+        let a: Coord = 5.into();
+        let b: Coord = 5.into();
+        assert!(a.is_inside(&b));
+    }
+
+
+    #[test]
+    fn is_inside_scalar_gt() {
+        let a: Coord = 7.into();
+        let b: Coord = 3.into();
+        assert!(!a.is_inside(&b));
+        assert!(b.is_inside(&a));
+    }
+
+
+    #[test]
+    fn is_inside_flat_tuple_all_lt() {
+        let a: Coord = (1, 2, 3).into();
+        let b: Coord = (2, 3, 4).into();
+        assert!(a.is_inside(&b));
+        assert!(!b.is_inside(&a));
+    }
+    #[test]
+    fn is_inside_flat_tuple_with_equals() {
+        let a: Coord = (1, 2, 3).into();
+        let b: Coord = (1, 3, 3).into(); // equal on 0 and 2
+        assert!(a.is_inside(&b));
+        assert!(!b.is_inside(&a));
+    }
+
+    #[test]
+    fn is_inside_nested_tuple_all_le() {
+        let a: Coord = ((1, 2), 3).into();
+        let b: Coord = ((1, 3), 3).into(); // equal last, others a<=b
+        assert!(a.is_inside(&b));
+        assert!(!b.is_inside(&a));
+    }
+
+    #[test]
+    fn is_inside_nested_tuple_fails_on_one_position() {
+        let a: Coord = ((2, 5), 3).into();
+        let b: Coord = ((2, 4), 4).into(); // 5 <= 4 fails
+        assert!(!a.is_inside(&b));
+    }
+
+    #[test]
+    fn is_inside_tuple_with_empty_element() {
+        let a: Coord = ((), 2).into();
+        let b: Coord = ((), 2).into();
+        assert!(a.is_inside(&b));
+        assert!(b.is_inside(&a));
+    }
+
+    #[test]
+    fn is_inside_deep_nested_with_empties() {
+        let a: Coord = ((), (2, ((), 3))).into();
+        let b: Coord = ((), (2, ((), 4))).into();
+        assert!(a.is_inside(&b));   // equal on empties/2; 3 <= 4
+        assert!(!b.is_inside(&a));  // 4 <= 3 fails
+    }
+
+    #[test]
+    #[should_panic(expected = "Precondition failed")]
+    fn is_inside_non_congruent_should_panic() {
+        let a: Coord = (1, 2).into();
+        let b: Coord = 3.into();
+        let _ = a.is_inside(&b);
     }
 }
