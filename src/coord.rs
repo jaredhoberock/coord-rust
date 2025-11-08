@@ -113,8 +113,6 @@ impl Coord {
         match (self, other) {
             (Coord::Scalar(a), Coord::Scalar(b)) => a < b,
             (Coord::Tuple(xs), Coord::Tuple(ys)) => {
-                // () is not strictly inside ()
-                if xs.is_empty() { return false; }
                 xs.iter().zip(ys.iter()).all(|(x, y)| x.is_strictly_inside(y))
             },
             _ => unreachable!("invariant broken: Coords must be congruent")
@@ -558,8 +556,8 @@ mod tests {
     fn is_strictly_inside_empty_tuple() {
         let a: Coord = ().into();
         let b: Coord = ().into();
-        assert!(!a.is_strictly_inside(&b));
-        assert!(!b.is_strictly_inside(&a));
+        assert!(a.is_strictly_inside(&b));
+        assert!(b.is_strictly_inside(&a));
     }
 
     #[test]
