@@ -129,6 +129,23 @@ impl Coord {
             _ => unreachable!("invariant broken: Coords must be congruent")
         }
     }
+
+    pub fn to_flat_tuple(&self) -> Vec<i64> {
+        match self {
+            Coord::Scalar(x) => vec![*x],
+            Coord::Tuple(xs) =>
+                xs.iter()
+                    .flat_map(|c| c.to_flat_tuple())
+                    .collect(),
+                
+        }
+    }
+
+    // XXX TODO colexicographical_lift
+    // steps:
+    // * to_flat_tuple
+    // * scan
+    // * unflatten
 }
 
 impl From<i64> for Coord {
@@ -379,6 +396,55 @@ mod tests {
         let a: Coord = (1, 2).into();
         let b: Coord = 3.into();
         let _ = a.inner_product(&b);
+    }
+
+    #[test]
+    fn to_flat_tuple_scalar() {
+        let a: Coord = 7.into();
+        let flat = a.to_flat_tuple();
+        assert_eq!(flat, vec![7]);
+    }
+
+    #[test]
+    fn to_flat_tuple_empty_tuple() {
+        let a: Coord = ().into();
+        let flat = a.to_flat_tuple();
+        assert_eq!(flat, Vec::<i64>::new());
+    }
+
+    #[test]
+    fn to_flat_tuple_flat_tuple() {
+        let a: Coord = (1, 2, 3).into();
+        let flat = a.to_flat_tuple();
+        assert_eq!(flat, vec![1, 2, 3]);
+    }
+
+    #[test]
+    fn to_flat_tuple_nested_tuple() {
+        let a: Coord = (1, (2, 3)).into();
+        let flat = a.to_flat_tuple();
+        assert_eq!(flat, vec![1, 2, 3]);
+    }
+
+    #[test]
+    fn to_flat_tuple_deeply_nested_tuple() {
+        let a: Coord = (1, (2, (3, 4))).into();
+        let flat = a.to_flat_tuple();
+        assert_eq!(flat, vec![1, 2, 3, 4]);
+    }
+
+    #[test]
+    fn to_flat_tuple_mixed_with_empty_tuple() {
+        let a: Coord = ((), 2, ((), 3)).into();
+        let flat = a.to_flat_tuple();
+        assert_eq!(flat, vec![2, 3]);
+    }
+
+    #[test]
+    fn to_flat_tuple_complex_nested_structure() {
+        let a: Coord = ((1, (2, ())), ((), (3, 4))).into();
+        let flat = a.to_flat_tuple();
+        assert_eq!(flat, vec![1, 2, 3, 4]);
     }
 
     #[test]
@@ -656,6 +722,7 @@ mod tests {
         assert!(a.is_inside(&b));
         assert!(!b.is_inside(&a));
     }
+
     #[test]
     fn is_inside_flat_tuple_with_equals() {
         let a: Coord = (1, 2, 3).into();
