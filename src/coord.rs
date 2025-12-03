@@ -1,6 +1,21 @@
 use crate::{congruent, requires, weakly_congruent};
 use crate::shape::Shape;
 
+fn exclusive_scan<T,F>(xs: &[T], init: T, op: F) -> Vec<T>
+where
+    F: Fn(T, T) -> T,
+    T: Copy,
+{
+    let mut acc = init;
+    let mut result = Vec::with_capacity(xs.len() + 1);
+    for &x in xs {
+        result.push(acc);
+        acc = op(acc, x);
+    }
+    result.push(acc);
+    result
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Coord {
     Scalar(i64),
@@ -8,6 +23,38 @@ pub enum Coord {
 }
 
 impl Coord {
+    pub fn new_with_shape(flat: &[i64], shape: Shape) -> Self {
+        fn build(shape: &Shape, flat: &[i64], idx: &mut usize) -> Coord {
+            match shape {
+                Shape::Scalar => {
+                    let i = *idx;
+                    assert!(i < flat.len(), "not enough elements to unflatten Coord");
+                    *idx += 1;
+                    Coord::Scalar(flat[i])
+                }
+                Shape::Tuple(children) => {
+                    let mut coords = Vec::with_capacity(children.len());
+                    for child_shape in children {
+                        coords.push(build(child_shape, flat, idx));
+                    }
+                    Coord::Tuple(coords)
+                }
+            }
+        }
+
+        let mut idx = 0;
+        let coord = build(&shape, flat, &mut idx);
+        assert!(idx == flat.len(),
+            "too many elements in flat slice for given Shape: consumed {idx}, had {}",
+            flat.len(),
+        );
+        coord
+    }
+
+    pub fn unflatten_like(flat: &[i64], coord: &Self) -> Self {
+        Self::new_with_shape(flat, coord.shape())
+    }
+
     pub fn shape(&self) -> Shape {
         match self {
             Coord::Scalar(_) => Shape::Scalar,
@@ -141,11 +188,79 @@ impl Coord {
         }
     }
 
-    // XXX TODO colexicographical_lift
-    // steps:
-    // * to_flat_tuple
-    // * scan
-    // * unflatten
+    pub fn zero_extend_to_shape(&self, shape: &Shape) -> Self {
+        match (self, shape) {
+            (Coord::Scalar(x), Shape::Scalar) => Coord::Scalar(*x),
+
+            (Coord::Scalar(_), Shape::Tuple(children)) => {
+                let mut iter = children.iter();
+                Coord::Tuple(
+                    std::iter::once(self.zero_extend_to_shape(iter.next().unwrap()))
+                        .chain(iter.map(Coord::zero_from_shape))
+                        .collect()
+                )
+            },
+
+            (Coord::Tuple(xs), Shape::Tuple(children)) => {
+                assert_eq!(xs.len(), children.len(),
+                    "Coord::zero_extend_to_shape: tuple arity mismatch"
+                );
+                Coord::Tuple(
+                    xs.iter()
+                        .zip(children)
+                        .map(|(x, child_shape)| x.zero_extend_to_shape(child_shape))
+                        .collect()
+                )
+            },
+
+            (Coord::Tuple(_), Shape::Scalar) => {
+                unreachable!("precondition violated: tuple cannot extend to scalar")
+            }
+        }
+    }
+
+    #[requires(weakly_congruent(other))]
+    pub fn zero_extend_like(&self, other: &Coord) -> Self {
+        self.zero_extend_to_shape(&other.shape())
+    }
+
+    #[requires(weakly_congruent(shape))]
+    pub fn colexicographical_lift(&self, shape: &Coord) -> Coord {
+        match (self, shape) {
+            (Coord::Scalar(x), _) => {
+                let mut flat_shape = shape.to_flat_tuple();
+                flat_shape.pop(); // the final element is irrelevant
+
+                let mut scanned = exclusive_scan(&flat_shape, 1, |a, b| a * b);
+                let total_product = scanned.pop().unwrap();
+                let prefix_products = scanned;
+
+                let mut result: Vec<i64> = prefix_products
+                    .iter()
+                    .zip(&flat_shape)
+                    .map(|(&p, &d)| (x / p) % d)
+                    .collect();
+
+                result.push(x / total_product);
+
+                Coord::unflatten_like(&result, &shape)
+            }
+
+            (Coord::Tuple(xs), Coord::Tuple(ys)) => {
+                assert_eq!(xs.len(), ys.len(), "precondition violated: tuple arity mismatch");
+                Coord::Tuple(
+                    xs.iter()
+                        .zip(ys)
+                        .map(|(x, y)| x.colexicographical_lift(y))
+                        .collect()
+                )
+            }
+
+            (Coord::Tuple(_), Coord::Scalar(_)) => {
+                unreachable!("precondition violated: tuple cannot lift to scalar")
+            }
+        }
+    }
 }
 
 impl From<i64> for Coord {
@@ -768,5 +883,190 @@ mod tests {
         let a: Coord = (1, 2).into();
         let b: Coord = 3.into();
         let _ = a.is_inside(&b);
+    }
+
+    #[test]
+    fn flatten_unflatten_roundtrip() {
+        let cases: &[Coord] = &[
+            7.into(),
+            ().into(),
+            (1,).into(),
+            (1, 2).into(),
+            (1, (2, 3)).into(),
+            (1, (2, (3, 4))).into(),
+            ((), 2, ((), 3)).into(),
+            ((1, (2, ())), ((), (3, 4))).into(),
+        ];
+
+        for original in cases {
+            let flat = original.to_flat_tuple();
+            let shape = original.shape();
+            let reconstructed = Coord::new_with_shape(&flat, shape);
+            assert_eq!(
+                *original, reconstructed,
+                "round-trip failed for {original:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn unflatten_like_matches_new_with_shape() {
+        let like: Coord = (1, (2, 3)).into();
+        let flat = vec![10, 20, 30];
+    
+        let a = Coord::new_with_shape(&flat, like.shape());
+        let b = Coord::unflatten_like(&flat, &like);
+    
+        assert_eq!(a, b);
+    }
+
+    #[test]
+    fn colex_lift_congruent_is_identity() {
+        let a: Coord = (1, (2, 3)).into();
+        let shape: Coord = (10, (20, 30)).into();
+        let expected = a.clone();
+        let result = a.colexicographical_lift(&shape);
+        assert_eq!(expected, result);
+    }
+
+    #[test]
+    fn colex_lift_empty_tuple() {
+        let coord: Coord = ().into();
+        let shape: Coord = ().into();
+        let expected: Coord = ().into();
+        let result = coord.colexicographical_lift(&shape);
+        assert_eq!(expected, result);
+    }
+
+    #[test]
+    fn colex_lift_pair_of_empty_tuple() {
+        let coord: Coord = ((), ()).into();
+        let shape: Coord = ((), ()).into();
+        let expected: Coord = ((), ()).into();
+        let result = coord.colexicographical_lift(&shape);
+        assert_eq!(expected, result);
+    }
+
+    #[test]
+    fn colex_lift_scalar() {
+        let coord: Coord = 5.into();
+        let shape: Coord = 10.into();
+        let expected: Coord = 5.into();
+        let result = coord.colexicographical_lift(&shape);
+        assert_eq!(expected, result);
+    }
+
+    #[test]
+    fn colex_lift_scalar_into_single() {
+        let coord: Coord = 5.into();
+        let shape: Coord = (10,).into();
+        let expected: Coord = (5,).into();
+        let result = coord.colexicographical_lift(&shape);
+        assert_eq!(expected, result);
+    }
+
+    #[test]
+    fn colex_lift_scalar_into_pair() {
+        let coord: Coord = 23.into();
+        let shape: Coord = (5,5).into();
+        let expected: Coord = (3,4).into();
+        let result = coord.colexicographical_lift(&shape);
+        assert_eq!(expected, result);
+    }
+
+    #[test]
+    fn colex_lift_scalar_into_triple() {
+        let coord: Coord = 1234.into();
+        let shape: Coord = (2,3,5).into();
+        let expected: Coord = (0,2,205).into();
+        let result = coord.colexicographical_lift(&shape);
+        assert_eq!(expected, result);
+    }
+
+    #[test]
+    fn colex_lift_scalar_into_quadruple() {
+        let coord: Coord = 1234.into();
+        let shape: Coord = (2,3,5,7).into();
+        let expected: Coord = (0,2,0,41).into();
+        let result = coord.colexicographical_lift(&shape);
+        assert_eq!(expected, result);
+    }
+
+    #[test]
+    fn colex_lift_complex_nested() {
+        let coord: Coord    = (    1, (      2, (3,        4))).into();
+        let shape: Coord    = ((1,2), ((2,2,2), (3,(4,4,4,4)))).into();
+        let expected: Coord = ((0,1), ((0,1,0), (3,(0,1,0,0)))).into();
+        let result = coord.colexicographical_lift(&shape);
+        assert_eq!(expected, result);
+    }
+
+    #[test]
+    fn colex_lift_scalar_into_nested_pair() {
+        let coord: Coord = 23.into();
+        let shape: Coord = ((5, 5),).into();
+        let expected: Coord = ((3, 4),).into();
+        let result = coord.colexicographical_lift(&shape);
+        assert_eq!(expected, result);
+    }
+
+    #[test]
+    fn colex_lift_scalar_into_deeply_nested() {
+        let coord: Coord = 23.into();
+        let shape: Coord = (5, (5,)).into();
+        let expected: Coord = (3, (4,)).into();
+        let result = coord.colexicographical_lift(&shape);
+        assert_eq!(expected, result);
+    }
+
+    #[test]
+    fn colex_lift_pair_into_pair_of_pairs() {
+        let coord: Coord = (7, 23).into();
+        let shape: Coord = ((2, 4), (5, 5)).into();
+        let expected: Coord = ((1, 3), (3, 4)).into();
+        let result = coord.colexicographical_lift(&shape);
+        assert_eq!(expected, result);
+    }
+
+    #[test]
+    fn colex_lift_large_overflow() {
+        let coord: Coord = 1000.into();
+        let shape: Coord = (2, 2).into();
+        // 1000 % 2 = 0, 1000 / 2 = 500
+        let expected: Coord = (0, 500).into();
+        let result = coord.colexicographical_lift(&shape);
+        assert_eq!(expected, result);
+    }
+
+    #[test]
+    fn colex_lift_nested_with_single_element_tuples() {
+        let coord: Coord = (5, (7,)).into();
+        let shape: Coord = ((2, 3), ((2, 4),)).into();
+        // 5 into (2, 3): 5 % 2 = 1, 5 / 2 = 2 → (1, 2)
+        // 7 into (2, 4): 7 % 2 = 1, 7 / 2 = 3 → (1, 3)
+        let expected: Coord = ((1, 2), ((1, 3),)).into();
+        let result = coord.colexicographical_lift(&shape);
+        assert_eq!(expected, result);
+    }
+
+    #[test]
+    fn colex_lift_shape_with_ones() {
+        let coord: Coord = 7.into();
+        let shape: Coord = (1, 1, 10).into();
+        // 7 % 1 = 0, 7 / 1 = 7
+        // 7 % 1 = 0, 7 / 1 = 7
+        // final: 7
+        let expected: Coord = (0, 0, 7).into();
+        let result = coord.colexicographical_lift(&shape);
+        assert_eq!(expected, result);
+    }
+    
+    #[test]
+    fn colex_lift_scalar_into_triple_nested() {
+        let coord: Coord = 23.into();
+        let shape: Coord = (((5, 5),),).into();
+        let expected: Coord = (((3, 4),),).into();
+        let result = coord.colexicographical_lift(&shape);
+        assert_eq!(expected, result);
     }
 }
