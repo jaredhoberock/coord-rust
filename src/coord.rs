@@ -81,6 +81,13 @@ impl Coord {
         self.shape().is_weakly_congruent_to(&other.shape())
     }
 
+    pub fn size(&self) -> i64 {
+        match self {
+            Coord::Scalar(n) => *n,
+            Coord::Tuple(elements) => elements.iter().map(|e| e.size()).product(),
+        }
+    }
+
     #[congruent(other, result)]
     pub fn sum(&self, other: &Self) -> Self {
         match (self, other) {
@@ -258,6 +265,25 @@ impl Coord {
 
             (Coord::Tuple(_), Coord::Scalar(_)) => {
                 unreachable!("precondition violated: tuple cannot lift to scalar")
+            }
+        }
+    }
+
+    pub fn compact_left_major_stride_for(shape: &Self) -> Self {
+        Self::compact_left_major_stride_impl(shape, 1)
+    }
+
+    fn compact_left_major_stride_impl(shape: &Coord, prev_product: i64) -> Self {
+        match shape {
+            Coord::Scalar(_) => Coord::Scalar(prev_product),
+            Coord::Tuple(elements) => {
+                let mut result = Vec::new();
+                let mut current_product = prev_product;
+                for elem in elements {
+                    result.push(Self::compact_left_major_stride_impl(elem, current_product));
+                    current_product *= elem.size();
+                }
+                Coord::Tuple(result)
             }
         }
     }
@@ -1067,6 +1093,50 @@ mod tests {
         let shape: Coord = (((5, 5),),).into();
         let expected: Coord = (((3, 4),),).into();
         let result = coord.colexicographical_lift(&shape);
+        assert_eq!(expected, result);
+    }
+
+    #[test]
+    fn compact_left_major_stride_for_scalar() {
+        let shape: Coord = 10.into();
+        let expected: Coord = 1.into();
+        let result = Coord::compact_left_major_stride_for(&shape);
+        assert_eq!(expected, result);
+    }
+
+    #[test]
+    fn compact_left_major_stride_for_empty_tuple() {
+        let shape: Coord = ().into();
+        let expected: Coord = ().into();
+        let result = Coord::compact_left_major_stride_for(&shape);
+        assert_eq!(expected, result);
+    }
+
+    #[test]
+    fn compact_left_major_stride_for_flat_tuple() {
+        // shape: (2, 3, 4)
+        let shape: Coord = (2, 3, 4).into();
+
+        // compact left-major strides: (1, 2, 2*3) = (1, 2, 6)
+        let expected: Coord = (1, 2, 6).into();
+
+        let result = Coord::compact_left_major_stride_for(&shape);
+        assert_eq!(expected, result);
+    }
+
+    #[test]
+    fn compact_left_major_stride_for_nested() {
+        // shape: (2, (3, 4))
+        let shape: Coord = (2, (3, 4)).into();
+
+        // left-major (row-major) compact strides:
+        // first element stride = 1
+        // second element is a tuple, so its children start at product(2) = 2:
+        //   stride(3) = 2
+        //   stride(4) = 2 * 3 = 6
+        let expected: Coord = (1, (2, 6)).into();
+
+        let result = Coord::compact_left_major_stride_for(&shape);
         assert_eq!(expected, result);
     }
 }
