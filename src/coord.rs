@@ -287,6 +287,60 @@ impl Coord {
             }
         }
     }
+
+    /// Iterate over all coordinates in colexicographical order from zero to shape (exclusive).
+    pub fn colex_iter_for(shape: &Coord) -> ColexIter {
+        ColexIter {
+            current: shape.zero_like(),
+            end: shape.clone(),
+            done: shape.size() == 0,
+        }
+    }
+
+    /// Increment in colexicographical order. Returns true if rolled over past the end.
+    fn colex_increment(&mut self, end: &Coord) -> bool {
+        match (self, end) {
+            (Coord::Scalar(x), Coord::Scalar(bound)) => {
+                *x += 1;
+                *x >= *bound
+            }
+            (Coord::Tuple(xs), Coord::Tuple(bounds)) => {
+                if xs.is_empty() {
+                    return true; // nullary always rolls over
+                }
+                for i in 0..xs.len() {
+                    if !xs[i].colex_increment(&bounds[i]) {
+                        return false;
+                    }
+                    if i < xs.len() - 1 {
+                        xs[i] = bounds[i].zero_like();
+                    }
+                }
+                true
+            }
+            _ => unreachable!("Coord and end must be congruent")
+        }
+    }
+}
+
+pub struct ColexIter {
+    current: Coord,
+    end: Coord,
+    done: bool,
+}
+
+impl Iterator for ColexIter {
+    type Item = Coord;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.done {
+            return None;
+        }
+
+        let result = self.current.clone();
+        self.done = self.current.colex_increment(&self.end);
+        Some(result)
+    }
 }
 
 impl From<i64> for Coord {
@@ -1139,4 +1193,225 @@ mod tests {
         let result = Coord::compact_left_major_stride_for(&shape);
         assert_eq!(expected, result);
     }
+
+    #[test]
+    fn colex_iter_for_scalar() {
+        let shape: Coord = 3.into();
+        let coords: Vec<Coord> = Coord::colex_iter_for(&shape).collect();
+        assert_eq!(coords, vec![0.into(), 1.into(), 2.into()]);
+    }
+    
+    #[test]
+    fn colex_iter_for_scalar_zero() {
+        let shape: Coord = 0.into();
+        let coords: Vec<Coord> = Coord::colex_iter_for(&shape).collect();
+        assert!(coords.is_empty());
+    }
+    
+    #[test]
+    fn colex_iter_for_scalar_one() {
+        let shape: Coord = 1.into();
+        let coords: Vec<Coord> = Coord::colex_iter_for(&shape).collect();
+        assert_eq!(coords, vec![0.into()]);
+    }
+    
+    #[test]
+    fn colex_iter_for_pair() {
+        let shape: Coord = (2, 3).into();
+        let coords: Vec<Coord> = Coord::colex_iter_for(&shape).collect();
+        let expected: Vec<Coord> = vec![
+            (0, 0).into(),
+            (1, 0).into(),
+            (0, 1).into(),
+            (1, 1).into(),
+            (0, 2).into(),
+            (1, 2).into(),
+        ];
+        assert_eq!(coords, expected);
+    }
+    
+    #[test]
+    fn colex_iter_for_pair_first_dim_one() {
+        let shape: Coord = (1, 3).into();
+        let coords: Vec<Coord> = Coord::colex_iter_for(&shape).collect();
+        let expected: Vec<Coord> = vec![
+            (0, 0).into(),
+            (0, 1).into(),
+            (0, 2).into(),
+        ];
+        assert_eq!(coords, expected);
+    }
+    
+    #[test]
+    fn colex_iter_for_pair_second_dim_one() {
+        let shape: Coord = (3, 1).into();
+        let coords: Vec<Coord> = Coord::colex_iter_for(&shape).collect();
+        let expected: Vec<Coord> = vec![
+            (0, 0).into(),
+            (1, 0).into(),
+            (2, 0).into(),
+        ];
+        assert_eq!(coords, expected);
+    }
+    
+    #[test]
+    fn colex_iter_for_triple() {
+        let shape: Coord = (2, 2, 2).into();
+        let coords: Vec<Coord> = Coord::colex_iter_for(&shape).collect();
+        let expected: Vec<Coord> = vec![
+            (0, 0, 0).into(),
+            (1, 0, 0).into(),
+            (0, 1, 0).into(),
+            (1, 1, 0).into(),
+            (0, 0, 1).into(),
+            (1, 0, 1).into(),
+            (0, 1, 1).into(),
+            (1, 1, 1).into(),
+        ];
+        assert_eq!(coords, expected);
+    }
+    
+    #[test]
+    fn colex_iter_for_empty_tuple() {
+        let shape: Coord = ().into();
+        let coords: Vec<Coord> = Coord::colex_iter_for(&shape).collect();
+        assert_eq!(coords, vec![().into()]);
+    }
+    
+    #[test]
+    fn colex_iter_for_zero_size_first_dim() {
+        let shape: Coord = (0, 3).into();
+        let coords: Vec<Coord> = Coord::colex_iter_for(&shape).collect();
+        assert!(coords.is_empty());
+    }
+    
+    #[test]
+    fn colex_iter_for_zero_size_second_dim() {
+        let shape: Coord = (2, 0).into();
+        let coords: Vec<Coord> = Coord::colex_iter_for(&shape).collect();
+        assert!(coords.is_empty());
+    }
+    
+    #[test]
+    fn colex_iter_for_nested() {
+        let shape: Coord = (2, (2, 2)).into();
+        let coords: Vec<Coord> = Coord::colex_iter_for(&shape).collect();
+        let expected: Vec<Coord> = vec![
+            (0, (0, 0)).into(),
+            (1, (0, 0)).into(),
+            (0, (1, 0)).into(),
+            (1, (1, 0)).into(),
+            (0, (0, 1)).into(),
+            (1, (0, 1)).into(),
+            (0, (1, 1)).into(),
+            (1, (1, 1)).into(),
+        ];
+        assert_eq!(coords, expected);
+    }
+    
+    #[test]
+    fn colex_iter_for_count_matches_size() {
+        let shapes: Vec<Coord> = vec![
+            3.into(),
+            (2, 3).into(),
+            (2, 3, 4).into(),
+            (2, (3, 4)).into(),
+            ().into(),
+        ];
+        
+        for shape in shapes {
+            let count = Coord::colex_iter_for(&shape).count();
+            let expected = shape.size().max(0) as usize;
+            assert_eq!(count, expected, "count mismatch for shape {:?}", shape);
+        }
+    }
+
+  #[test]
+  fn colex_iter_for_pair_with_trailing_empty() {
+      let shape: Coord = (2, ()).into();
+      let coords: Vec<Coord> = Coord::colex_iter_for(&shape).collect();
+      let expected: Vec<Coord> = vec![
+          (0, ()).into(),
+          (1, ()).into(),
+      ];
+      assert_eq!(coords, expected);
+  }
+  
+  #[test]
+  fn colex_iter_for_pair_with_leading_empty() {
+      let shape: Coord = ((), 2).into();
+      let coords: Vec<Coord> = Coord::colex_iter_for(&shape).collect();
+      let expected: Vec<Coord> = vec![
+          ((), 0).into(),
+          ((), 1).into(),
+      ];
+      assert_eq!(coords, expected);
+  }
+  
+  #[test]
+  fn colex_iter_for_pair_of_empties() {
+      let shape: Coord = ((), ()).into();
+      let coords: Vec<Coord> = Coord::colex_iter_for(&shape).collect();
+      let expected: Vec<Coord> = vec![
+          ((), ()).into(),
+      ];
+      assert_eq!(coords, expected);
+  }
+  
+  #[test]
+  fn colex_iter_for_nested_with_empty() {
+      let shape: Coord = (2, ((), 2)).into();
+      let coords: Vec<Coord> = Coord::colex_iter_for(&shape).collect();
+      let expected: Vec<Coord> = vec![
+          (0, ((), 0)).into(),
+          (1, ((), 0)).into(),
+          (0, ((), 1)).into(),
+          (1, ((), 1)).into(),
+      ];
+      assert_eq!(coords, expected);
+  }
+  
+  #[test]
+  fn colex_iter_for_nested_with_trailing_empty() {
+      let shape: Coord = ((2, ()), 2).into();
+      let coords: Vec<Coord> = Coord::colex_iter_for(&shape).collect();
+      let expected: Vec<Coord> = vec![
+          ((0, ()), 0).into(),
+          ((1, ()), 0).into(),
+          ((0, ()), 1).into(),
+          ((1, ()), 1).into(),
+      ];
+      assert_eq!(coords, expected);
+  }
+  
+  #[test]
+  fn colex_iter_for_triple_with_middle_empty() {
+      let shape: Coord = (2, (), 2).into();
+      let coords: Vec<Coord> = Coord::colex_iter_for(&shape).collect();
+      let expected: Vec<Coord> = vec![
+          (0, (), 0).into(),
+          (1, (), 0).into(),
+          (0, (), 1).into(),
+          (1, (), 1).into(),
+      ];
+      assert_eq!(coords, expected);
+  }
+  
+  #[test]
+  fn colex_iter_for_with_empty_size_matches_count() {
+      let shapes: Vec<Coord> = vec![
+          (2, ()).into(),
+          ((), 2).into(),
+          ((), ()).into(),
+          (2, ((), 2)).into(),
+          ((2, ()), 2).into(),
+          (2, (), 2).into(),
+      ];
+      
+      for shape in shapes {
+          let count = Coord::colex_iter_for(&shape).count();
+          let expected = shape.size() as usize;
+          assert_eq!(count, expected, "count mismatch for shape {:?}", shape);
+      }
+  }
 }
